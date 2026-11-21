@@ -1,13 +1,81 @@
-import React, { useState, useEffect } from 'react';
-import { Calculator, Clock, DollarSign, TrendingUp, PieChart, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Calculator, Clock, DollarSign, TrendingUp, PieChart, AlertTriangle, Sun, Moon } from 'lucide-react';
 import { PieChart as RechartsPieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
+const THEME_KEY = 'wageCalc:theme';
+const DARK_CSS = String.raw`
+.wc-root.wc-dark { background-color: #0b1020; color: #e8edf6; color-scheme: dark; }
+.wc-dark .bg-white { background-color: #131c33; }
+.wc-dark .bg-slate-50 { background-color: #1b2642; }
+.wc-dark .bg-slate-900 { background-color: #e2e8f0; color: #0f172a; }
+.wc-dark .focus\:bg-white:focus { background-color: #222f52; }
+.wc-dark .border-slate-200, .wc-dark .border-slate-300 { border-color: #2c3a5c; }
+.wc-dark .ring-slate-200\/70 { --tw-ring-color: rgba(148, 163, 184, 0.16); }
+.wc-dark .text-slate-900 { color: #f1f5f9; }
+.wc-dark .hover\:text-slate-900:hover { color: #f1f5f9; }
+.wc-dark .text-slate-800 { color: #e2e8f0; }
+.wc-dark .text-slate-700 { color: #cbd5e1; }
+.wc-dark .text-slate-600 { color: #aab6ca; }
+.wc-dark .text-slate-500 { color: #94a3b8; }
+.wc-dark .text-slate-400 { color: #7889a3; }
+.wc-dark .text-black { color: #f1f5f9; }
+.wc-dark input::placeholder { color: #64748b; }
+.wc-dark select option { background-color: #131c33; color: #e8edf6; }
+.wc-dark .bg-teal-50 { background-color: rgba(20, 184, 166, 0.12); }
+.wc-dark .border-teal-200, .wc-dark .border-teal-300 { border-color: rgba(45, 212, 191, 0.3); }
+.wc-dark .text-teal-600 { color: #2dd4bf; }
+.wc-dark .text-teal-700 { color: #5eead4; }
+.wc-dark .text-teal-800 { color: #99f6e4; }
+.wc-dark .hover\:text-teal-800:hover { color: #ccfbf1; }
+.wc-dark .hover\:bg-teal-50:hover { background-color: rgba(20, 184, 166, 0.14); }
+.wc-dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.1); }
+.wc-dark .bg-red-100 { background-color: rgba(239, 68, 68, 0.18); }
+.wc-dark .border-red-200, .wc-dark .border-red-300 { border-color: rgba(248, 113, 113, 0.32); }
+.wc-dark .text-red-600 { color: #f87171; }
+.wc-dark .text-red-700 { color: #fca5a5; }
+.wc-dark .text-red-800 { color: #fecaca; }
+.wc-dark .hover\:text-red-800:hover { color: #fee2e2; }
+.wc-dark .hover\:bg-red-50:hover { background-color: rgba(239, 68, 68, 0.14); }
+.wc-dark .bg-green-50 { background-color: rgba(34, 197, 94, 0.1); }
+.wc-dark .bg-green-100 { background-color: rgba(34, 197, 94, 0.18); }
+.wc-dark .border-green-200, .wc-dark .border-green-300 { border-color: rgba(74, 222, 128, 0.3); }
+.wc-dark .text-green-600 { color: #4ade80; }
+.wc-dark .text-green-700 { color: #86efac; }
+.wc-dark .text-green-800 { color: #bbf7d0; }
+.wc-dark .bg-yellow-50 { background-color: rgba(234, 179, 8, 0.1); }
+.wc-dark .border-yellow-200, .wc-dark .border-yellow-300 { border-color: rgba(250, 204, 21, 0.3); }
+.wc-dark .text-yellow-700 { color: #facc15; }
+.wc-dark .text-yellow-800 { color: #fde68a; }
+.wc-dark .bg-orange-50 { background-color: rgba(249, 115, 22, 0.1); }
+.wc-dark .border-orange-200 { border-color: rgba(251, 146, 60, 0.3); }
+.wc-dark .text-orange-600 { color: #fb923c; }
+.wc-dark .text-orange-800 { color: #fed7aa; }
+.wc-dark .text-purple-600 { color: #a78bfa; }
+.wc-dark .text-purple-700 { color: #c4b5fd; }
+.wc-dark .shadow-sm, .wc-dark .shadow-lg { --tw-shadow-color: rgba(0, 0, 0, 0.4); }
+`;
+const STORAGE_KEY = 'wageCalc:v1';
+const PROFILES_KEY = 'wageCalc:profiles';
+const EMPTY_EXPENSES = {
+  rent: '', electricity: '', water: '', phone: '', wifi: '', groceries: '',
+  homeInsurance: '', autoInsurance: '', healthInsurance: '', carPayment: '', entertainment: '', miscellaneous: ''
+};
+const loadStored = (key, fallback) => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (e) {
+    return fallback;
+  }
+};
+
 export default function WageCalculator() {
-  const [wage, setWage] = useState('');
-  const [wagePeriod, setWagePeriod] = useState('hourly');
-  const [hoursPerDay, setHoursPerDay] = useState('8');
-  const [daysPerWeek, setDaysPerWeek] = useState('5');
-  const [taxRate, setTaxRate] = useState('26');
+  const saved = loadStored(STORAGE_KEY, {});
+  const [wage, setWage] = useState(saved.wage ?? '');
+  const [wagePeriod, setWagePeriod] = useState(saved.wagePeriod ?? 'hourly');
+  const [hoursPerDay, setHoursPerDay] = useState(saved.hoursPerDay ?? '8');
+  const [daysPerWeek, setDaysPerWeek] = useState(saved.daysPerWeek ?? '5');
+  const [taxRate, setTaxRate] = useState(saved.taxRate ?? '26');
   const [itemCost, setItemCost] = useState('');
   const [hasLoan, setHasLoan] = useState(false);
   const [interestRate, setInterestRate] = useState('');
@@ -15,26 +83,64 @@ export default function WageCalculator() {
   const [durationUnit, setDurationUnit] = useState('months');
   const [additionalPrincipal, setAdditionalPrincipal] = useState('');
   const [additionalPrincipalFreq, setAdditionalPrincipalFreq] = useState('monthly');
-  const [currentRetirementSavings, setCurrentRetirementSavings] = useState('');
+  const [currentRetirementSavings, setCurrentRetirementSavings] = useState(saved.currentRetirementSavings ?? '');
   
   // Monthly expenses
-  const [monthlyExpenses, setMonthlyExpenses] = useState({
-    rent: '',
-    electricity: '',
-    water: '',
-    phone: '',
-    wifi: '',
-    groceries: '',
-    homeInsurance: '',
-    autoInsurance: '',
-    carPayment: '',
-    entertainment: '',
-    miscellaneous: ''
-  });
+  const [monthlyExpenses, setMonthlyExpenses] = useState({ ...EMPTY_EXPENSES, ...(saved.monthlyExpenses || {}) });
 
   // Saved expense profiles
-  const [savedExpenses, setSavedExpenses] = useState({});
+  const [savedExpenses, setSavedExpenses] = useState(() => loadStored(PROFILES_KEY, {}));
   const [profileName, setProfileName] = useState('');
+
+  // Toast message (replaces alert())
+  const [toast, setToast] = useState('');
+  const toastTimer = useRef(null);
+  const showToast = (message) => {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 2500);
+  };
+
+  // Theme: an explicit choice wins; otherwise follow the device setting
+  const [theme, setTheme] = useState(() => loadStored(THEME_KEY, null));
+  const [systemDark, setSystemDark] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+      : false
+  );
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.matchMedia) return undefined;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = (e) => setSystemDark(e.matches);
+    if (mq.addEventListener) mq.addEventListener('change', onChange);
+    else mq.addListener(onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener('change', onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
+  const isDark = theme ? theme === 'dark' : systemDark;
+  useEffect(() => {
+    if (theme) {
+      try { localStorage.setItem(THEME_KEY, JSON.stringify(theme)); } catch (e) { /* storage unavailable */ }
+    }
+    // keep overscroll areas and native form controls in step with the theme
+    document.documentElement.style.colorScheme = isDark ? 'dark' : 'light';
+    document.body.style.backgroundColor = isDark ? '#0b1020' : '';
+  }, [theme, isDark]);
+  const toggleTheme = () => setTheme(isDark ? 'light' : 'dark');
+
+  // Chart colors that need to change with the theme
+  const themedColor = (c) => (isDark && String(c).toLowerCase() === '#000000' ? '#94a3b8' : c); // black "Taxes" slice would vanish
+  const gridStroke = isDark ? '#2c3a5c' : '#e2e8f0';
+  const axisColor = isDark ? '#94a3b8' : '#64748b';
+  const tooltipStyle = {
+    backgroundColor: isDark ? '#1b2642' : '#ffffff',
+    border: `1px solid ${isDark ? '#2c3a5c' : '#e2e8f0'}`,
+    borderRadius: 12,
+    color: isDark ? '#e8edf6' : '#0f172a'
+  };
+  const tooltipItemStyle = { color: isDark ? '#e8edf6' : '#0f172a' };
 
   const [results, setResults] = useState(null);
 
@@ -49,6 +155,7 @@ export default function WageCalculator() {
     autoInsurance: 'Auto Insurance',
     carPayment: 'Car Payment',
     entertainment: 'Entertainment',
+    healthInsurance: 'Health Insurance',
     miscellaneous: 'Miscellaneous/Subscriptions'
   };
 
@@ -215,20 +322,20 @@ export default function WageCalculator() {
 
   const saveExpenseProfile = () => {
     if (!profileName.trim()) {
-      alert('Please enter a profile name');
+      showToast('Enter a profile name first');
       return;
     }
     setSavedExpenses(prev => ({
       ...prev,
-      [profileName]: { ...monthlyExpenses }
+      [profileName.trim()]: { ...monthlyExpenses }
     }));
     setProfileName('');
-    alert(`Profile "${profileName}" saved successfully!`);
+    showToast(`Saved "${profileName.trim()}"`);
   };
 
   const loadExpenseProfile = (name) => {
     if (savedExpenses[name]) {
-      setMonthlyExpenses(savedExpenses[name]);
+      setMonthlyExpenses({ ...EMPTY_EXPENSES, ...savedExpenses[name] });
     }
   };
 
@@ -241,19 +348,7 @@ export default function WageCalculator() {
   };
 
   const clearAllExpenses = () => {
-    setMonthlyExpenses({
-      rent: '',
-      electricity: '',
-      water: '',
-      phone: '',
-      wifi: '',
-      groceries: '',
-      homeInsurance: '',
-      autoInsurance: '',
-      carPayment: '',
-      entertainment: '',
-      miscellaneous: ''
-    });
+    setMonthlyExpenses({ ...EMPTY_EXPENSES });
   };
 
   const calculate = () => {
@@ -660,46 +755,73 @@ export default function WageCalculator() {
     });
   };
 
+  // Persist income/expense inputs and saved profiles on this device
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        wage, wagePeriod, hoursPerDay, daysPerWeek, taxRate, currentRetirementSavings, monthlyExpenses
+      }));
+    } catch (e) { /* storage unavailable */ }
+  }, [wage, wagePeriod, hoursPerDay, daysPerWeek, taxRate, currentRetirementSavings, monthlyExpenses]);
+
+  useEffect(() => {
+    try { localStorage.setItem(PROFILES_KEY, JSON.stringify(savedExpenses)); } catch (e) { /* storage unavailable */ }
+  }, [savedExpenses]);
+
   useEffect(() => {
     calculate(); // Always calculate, regardless of wage value
   }, [wage, wagePeriod, hoursPerDay, daysPerWeek, taxRate, itemCost, hasLoan, interestRate, loanDuration, durationUnit, additionalPrincipal, additionalPrincipalFreq, monthlyExpenses, currentRetirementSavings]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className={`wc-root ${isDark ? 'wc-dark' : ''} min-h-screen w-full overflow-x-hidden bg-slate-50 text-slate-900 antialiased tabular-nums px-4 pb-10 sm:px-6`} style={{ paddingTop: 'max(1.5rem, env(safe-area-inset-top))' }}>
+      <style>{DARK_CSS}</style>
+      {toast && (
+        <div role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-900 px-5 py-3 text-sm font-medium text-white shadow-lg">
+          {toast}
+        </div>
+      )}
       <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <Clock className="w-8 h-8 text-indigo-600 mr-2" />
-            <h1 className="text-3xl font-bold text-gray-800">Don't Get Bamboozled Daily Wage Allocation Calculator</h1>
+        <div className="mb-6 sm:mb-8">
+          <div className="flex items-center mb-2">
+            <span className="mr-3 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-teal-700 text-white shadow-sm"><Clock className="h-6 w-6" /></span>
+            <h1 className="min-w-0 flex-1 text-2xl sm:text-3xl font-semibold tracking-tight text-slate-900">Don't Get Bamboozled Daily Wage Allocation Calculator</h1>
+            <button
+              type="button"
+              onClick={toggleTheme}
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+              className="ml-3 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-slate-600 ring-1 ring-slate-200/70 shadow-sm transition hover:text-slate-900 focus:outline-none focus:ring-4 focus:ring-teal-600/25"
+            >
+              {isDark ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+            </button>
           </div>
-          <p className="text-gray-600">See how every purchase affects your daily income breakdown</p>
+          <p className="text-slate-600">See how every purchase affects your daily income breakdown</p>
         </div>
 
-        <div className="grid lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Input Section */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="min-w-0 lg:col-span-2 space-y-6">
             {/* Income & Purchase Card */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+            <div className="bg-white rounded-2xl ring-1 ring-slate-200/70 shadow-sm p-5 sm:p-6">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900 mb-5 flex items-center">
                 <DollarSign className="w-5 h-5 mr-2 text-green-600" />
                 Income & Purchase Details
               </h2>
 
-              <div className="grid md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Your Wage</label>
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">Your Wage</label>
                   <div className="flex gap-2">
                     <input
                       type="number"
                       value={wage}
                       onChange={(e) => setWage(e.target.value)}
                       placeholder="Enter amount"
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="flex-1 min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                     />
                     <select
                       value={wagePeriod}
                       onChange={(e) => setWagePeriod(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                     >
                       <option value="hourly">per hour</option>
                       <option value="daily">per day</option>
@@ -711,7 +833,7 @@ export default function WageCalculator() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Hours per Work Day</label>
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">Hours per Work Day</label>
                   <input
                     type="number"
                     step="0.5"
@@ -720,12 +842,12 @@ export default function WageCalculator() {
                     value={hoursPerDay}
                     onChange={(e) => setHoursPerDay(e.target.value)}
                     placeholder="8"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Days per Week</label>
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">Days per Week</label>
                   <input
                     type="number"
                     step="0.5"
@@ -734,16 +856,16 @@ export default function WageCalculator() {
                     value={daysPerWeek}
                     onChange={(e) => setDaysPerWeek(e.target.value)}
                     placeholder="5"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Tax Rate</label>
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">Tax Rate</label>
                   <select
                     value={taxRate}
                     onChange={(e) => setTaxRate(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                   >
                     <option value="0">0%</option>
                     <option value="5">5%</option>
@@ -755,13 +877,13 @@ export default function WageCalculator() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">New Purchase/Service Cost ($)</label>
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">New Purchase/Service Cost ($)</label>
                   <input
                     type="number"
                     value={itemCost}
                     onChange={(e) => setItemCost(e.target.value)}
                     placeholder="Enter cost"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    className="w-full min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                   />
                 </div>
               </div>
@@ -773,42 +895,42 @@ export default function WageCalculator() {
                     id="hasLoan"
                     checked={hasLoan}
                     onChange={(e) => setHasLoan(e.target.checked)}
-                    className="w-4 h-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                    className="w-4 h-4 text-teal-600 focus:ring-teal-500 border-slate-300 rounded"
                   />
-                  <label htmlFor="hasLoan" className="ml-2 text-sm font-medium text-gray-700">
+                  <label htmlFor="hasLoan" className="ml-2 text-sm font-medium text-slate-700">
                     This purchase involves a loan
                   </label>
                 </div>
 
                 {hasLoan && (
-                  <div className="pl-6 border-l-2 border-indigo-200 space-y-4">
-                    <div className="grid md:grid-cols-2 gap-4">
+                  <div className="pl-6 border-l-2 border-teal-200 space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Interest Rate (% per year)</label>
+                        <label className="block text-sm font-medium text-slate-600 mb-1.5">Interest Rate (% per year)</label>
                         <input
                           type="number"
                           step="0.01"
                           value={interestRate}
                           onChange={(e) => setInterestRate(e.target.value)}
                           placeholder="e.g., 5.5"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                         />
                       </div>
                       
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Loan Duration</label>
+                        <label className="block text-sm font-medium text-slate-600 mb-1.5">Loan Duration</label>
                         <div className="flex gap-2">
                           <input
                             type="number"
                             value={loanDuration}
                             onChange={(e) => setLoanDuration(e.target.value)}
                             placeholder="Duration"
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="flex-1 min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                           />
                           <select
                             value={durationUnit}
                             onChange={(e) => setDurationUnit(e.target.value)}
-                            className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                           >
                             <option value="months">months</option>
                             <option value="years">years</option>
@@ -818,25 +940,25 @@ export default function WageCalculator() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Additional Principal Payment</label>
+                      <label className="block text-sm font-medium text-slate-600 mb-1.5">Additional Principal Payment</label>
                       <div className="flex gap-2">
                         <input
                           type="number"
                           value={additionalPrincipal}
                           onChange={(e) => setAdditionalPrincipal(e.target.value)}
                           placeholder="Extra payment amount"
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="flex-1 min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                         />
                         <select
                           value={additionalPrincipalFreq}
                           onChange={(e) => setAdditionalPrincipalFreq(e.target.value)}
-                          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                         >
                           <option value="monthly">Monthly</option>
                           <option value="yearly">Yearly</option>
                         </select>
                       </div>
-                      <p className="text-xs text-gray-500 mt-1">
+                      <p className="text-xs text-slate-500 mt-1">
                         Optional: Extra payment towards principal to reduce loan term and interest
                       </p>
                     </div>
@@ -846,23 +968,23 @@ export default function WageCalculator() {
             </div>
 
             {/* Current Retirement Savings Card */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+            <div className="bg-white rounded-2xl ring-1 ring-slate-200/70 shadow-sm p-5 sm:p-6">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900 mb-5 flex items-center">
                 <TrendingUp className="w-5 h-5 mr-2 text-purple-600" />
                 Current Retirement Savings
               </h2>
 
-              <div className="grid md:grid-cols-1 gap-4">
+              <div className="grid grid-cols-1 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Current Retirement Balance ($)</label>
+                  <label className="block text-sm font-medium text-slate-600 mb-1.5">Current Retirement Balance ($)</label>
                   <input
                     type="number"
                     value={currentRetirementSavings}
                     onChange={(e) => setCurrentRetirementSavings(e.target.value)}
                     placeholder="Enter current retirement savings"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-slate-500 mt-1">
                     Optional: Enter your current retirement account balance (401k, IRA, etc.)
                   </p>
                 </div>
@@ -870,31 +992,31 @@ export default function WageCalculator() {
             </div>
 
             {/* Monthly Expenses Card */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
-                <Calculator className="w-5 h-5 mr-2 text-blue-600" />
+            <div className="bg-white rounded-2xl ring-1 ring-slate-200/70 shadow-sm p-5 sm:p-6">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900 mb-5 flex items-center">
+                <Calculator className="w-5 h-5 mr-2 text-teal-600" />
                 Monthly Expenses
               </h2>
 
               {/* Save/Load Controls */}
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <div className="mb-6 p-4 bg-slate-50 rounded-xl">
                 <div className="flex flex-wrap gap-3 items-center mb-3">
                   <input
                     type="text"
                     value={profileName}
                     onChange={(e) => setProfileName(e.target.value)}
                     placeholder="Profile name (e.g., 'My Budget')"
-                    className="flex-1 min-w-48 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 min-w-0 basis-40 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                   />
                   <button
                     onClick={saveExpenseProfile}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="px-4 py-2.5 bg-teal-700 text-white font-medium rounded-xl hover:bg-teal-800 active:scale-[0.98] transition focus:outline-none focus:ring-4 focus:ring-teal-600/25"
                   >
                     Save Profile
                   </button>
                   <button
                     onClick={clearAllExpenses}
-                    className="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
+                    className="px-4 py-2.5 bg-white text-red-700 font-medium border border-red-200 rounded-xl hover:bg-red-50 active:scale-[0.98] transition focus:outline-none focus:ring-4 focus:ring-red-500/20"
                   >
                     Clear All
                   </button>
@@ -902,19 +1024,19 @@ export default function WageCalculator() {
 
                 {Object.keys(savedExpenses).length > 0 && (
                   <div>
-                    <p className="text-sm text-gray-600 mb-2">Saved Profiles:</p>
+                    <p className="text-sm text-slate-600 mb-2">Saved Profiles:</p>
                     <div className="flex flex-wrap gap-2">
                       {Object.keys(savedExpenses).map(name => (
-                        <div key={name} className="flex items-center bg-white border rounded-md">
+                        <div key={name} className="flex items-center bg-white border rounded-xl">
                           <button
                             onClick={() => loadExpenseProfile(name)}
-                            className="px-3 py-1 text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-l-md"
+                            className="px-3 py-1 text-sm text-teal-600 hover:text-teal-800 hover:bg-teal-50 rounded-l-xl"
                           >
                             {name}
                           </button>
                           <button
                             onClick={() => deleteExpenseProfile(name)}
-                            className="px-2 py-1 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 border-l rounded-r-md"
+                            className="px-2 py-1 text-sm text-red-600 hover:text-red-800 hover:bg-red-50 border-l rounded-r-xl"
                           >
                             ×
                           </button>
@@ -925,16 +1047,16 @@ export default function WageCalculator() {
                 )}
               </div>
 
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {Object.entries(expenseLabels).map(([key, label]) => (
                   <div key={key}>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+                    <label className="block text-sm font-medium text-slate-600 mb-1.5">{label}</label>
                     <input
                       type="number"
                       value={monthlyExpenses[key]}
                       onChange={(e) => handleExpenseChange(key, e.target.value)}
                       placeholder="$0"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full min-w-0 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-base placeholder:text-slate-400 transition focus:outline-none focus:bg-white focus:border-teal-600 focus:ring-4 focus:ring-teal-600/15"
                     />
                   </div>
                 ))}
@@ -943,10 +1065,10 @@ export default function WageCalculator() {
           </div>
 
           {/* Results Section */}
-          <div className="space-y-6">
+          <div className="min-w-0 space-y-6">
             {/* Additional Principal Benefits Card */}
             {results && results.loanDetails && parseFloat(results.loanDetails.additionalPrincipalValue) > 0 && (
-              <div className="bg-green-50 border border-green-200 rounded-lg p-6">
+              <div className="bg-green-50 border border-green-200 rounded-xl p-6">
                 <div className="flex items-center mb-4">
                   <TrendingUp className="w-6 h-6 text-green-600 mr-2" />
                   <h2 className="text-lg font-bold text-green-800">Additional Principal Payment Benefits</h2>
@@ -964,14 +1086,14 @@ export default function WageCalculator() {
                     </div>
                   </div>
                   
-                  <div className="bg-green-100 p-3 rounded border border-green-300">
+                  <div className="bg-green-100 p-3 rounded-xl border border-green-300">
                     <p className="text-green-800 font-medium text-center">
                       Extra ${results.loanDetails.additionalPrincipalValue} {results.loanDetails.additionalPrincipalFreq} saves you ${results.loanDetails.interestSaved} in interest!
                     </p>
                   </div>
 
-                  <div className="bg-blue-50 p-3 rounded border border-blue-300">
-                    <div className="text-blue-800 text-sm space-y-1">
+                  <div className="bg-teal-50 p-3 rounded-xl border border-teal-300">
+                    <div className="text-teal-800 text-sm space-y-1">
                       <p><strong>Base Monthly Payment:</strong> ${results.loanDetails.baseMonthlyPayment}</p>
                       <p><strong>With Extra Payment:</strong> ${results.loanDetails.effectiveMonthlyPayment}</p>
                     </div>
@@ -982,7 +1104,7 @@ export default function WageCalculator() {
 
             {/* Shortfall Warning Card */}
             {results && results.shortfallData && results.shortfallData.hasShortfall && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-6">
                 <div className="flex items-center mb-4">
                   <AlertTriangle className="w-6 h-6 text-red-600 mr-2" />
                   <h2 className="text-lg font-bold text-red-800">Budget Alert: Income Shortfall</h2>
@@ -1000,7 +1122,7 @@ export default function WageCalculator() {
                     </div>
                   </div>
                   
-                  <div className="bg-red-100 p-3 rounded border border-red-300">
+                  <div className="bg-red-100 p-3 rounded-xl border border-red-300">
                     <p className="text-red-800 font-bold text-center text-base">
                       Monthly Shortfall: ${results.shortfallData.monthlyShortfall.toFixed(2)}
                     </p>
@@ -1009,13 +1131,13 @@ export default function WageCalculator() {
                     </p>
                   </div>
 
-                  <div className="bg-yellow-50 p-3 rounded border border-yellow-300">
+                  <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-300">
                     <p className="text-yellow-800 text-sm">
                       <strong>Warning:</strong> This budget is not sustainable. Consider reducing expenses or increasing income to avoid debt accumulation.
                     </p>
                   </div>
 
-                  <div className="bg-blue-50 p-3 rounded border border-blue-300">
+                  <div className="bg-teal-50 p-3 rounded-xl border border-teal-300">
                     {(() => {
                       const shortfall = results.shortfallData.monthlyShortfall;
                       const currentHourlyWage = parseFloat(results.hourlyWage);
@@ -1034,7 +1156,7 @@ export default function WageCalculator() {
                       
                       if (totalHoursNeeded <= maxReasonableHours) {
                         return (
-                          <p className="text-blue-800 text-sm">
+                          <p className="text-teal-800 text-sm">
                             <strong>To cover shortfall:</strong> Work an additional <span className="font-bold">{additionalHoursPerDay.toFixed(1)} hours per day</span> ({totalHoursNeeded.toFixed(1)} total hours/day) at your current net wage of ${netHourlyWage.toFixed(2)}/hour after taxes.
                           </p>
                         );
@@ -1046,7 +1168,7 @@ export default function WageCalculator() {
                         const requiredHourlyWage = targetMonthlyIncome / standardWorkHours;
                         
                         return (
-                          <p className="text-blue-800 text-sm">
+                          <p className="text-teal-800 text-sm">
                             <strong>Alternative solution:</strong> Working {maxReasonableHours} hours/day at your current wage, you'd still have a shortfall. Instead, you'll need a job paying <span className="font-bold">${requiredHourlyWage.toFixed(2)}/hour</span>, or <span className="font-bold">${targetMonthlyIncome.toFixed(2)}/month</span> (8 hours/day, 5 days/week) to cover all expenses with a 20% surplus.
                           </p>
                         );
@@ -1058,8 +1180,8 @@ export default function WageCalculator() {
             )}
 
             {/* Summary Card */}
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+            <div className="bg-white rounded-2xl ring-1 ring-slate-200/70 shadow-sm p-5 sm:p-6">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900 mb-5 flex items-center">
                 <TrendingUp className="w-5 h-5 mr-2 text-green-600" />
                 Summary
               </h2>
@@ -1067,22 +1189,22 @@ export default function WageCalculator() {
               {results ? (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-blue-50 p-3 rounded-lg">
-                      <p className="text-xs text-blue-600 font-medium">Hourly Wage</p>
-                      <p className="text-xl font-bold text-blue-800">${results.hourlyWage}</p>
+                    <div className="bg-teal-50 p-3 rounded-xl">
+                      <p className="text-xs text-teal-600 font-medium">Hourly Wage</p>
+                      <p className="text-xl font-bold text-teal-800">${results.hourlyWage}</p>
                     </div>
-                    <div className="bg-orange-50 p-3 rounded-lg">
+                    <div className="bg-orange-50 p-3 rounded-xl">
                       <p className="text-xs text-orange-600 font-medium">Gross Daily</p>
                       <p className="text-xl font-bold text-orange-800">${results.grossDailyWage}</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-red-50 p-3 rounded-lg">
+                    <div className="bg-red-50 p-3 rounded-xl">
                       <p className="text-xs text-red-600 font-medium">Daily Taxes</p>
                       <p className="text-xl font-bold text-red-800">${results.dailyTaxes}</p>
                     </div>
-                    <div className="bg-green-50 p-3 rounded-lg">
+                    <div className="bg-green-50 p-3 rounded-xl">
                       <p className="text-xs text-green-600 font-medium">Net Daily</p>
                       <p className="text-xl font-bold text-green-800">${results.netDailyWage}</p>
                     </div>
@@ -1091,11 +1213,11 @@ export default function WageCalculator() {
                   {/* Monthly Income vs Expenses */}
                   {results.shortfallData && (
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="bg-blue-50 p-3 rounded-lg">
-                        <p className="text-xs text-blue-600 font-medium">Monthly Income</p>
-                        <p className="text-lg font-bold text-blue-800">${results.shortfallData.netMonthlyIncome.toFixed(2)}</p>
+                      <div className="bg-teal-50 p-3 rounded-xl">
+                        <p className="text-xs text-teal-600 font-medium">Monthly Income</p>
+                        <p className="text-lg font-bold text-teal-800">${results.shortfallData.netMonthlyIncome.toFixed(2)}</p>
                       </div>
-                      <div className={`p-3 rounded-lg ${results.shortfallData.hasShortfall ? 'bg-red-50' : 'bg-green-50'}`}>
+                      <div className={`p-3 rounded-xl ${results.shortfallData.hasShortfall ? 'bg-red-50' : 'bg-green-50'}`}>
                         <p className={`text-xs font-medium ${results.shortfallData.hasShortfall ? 'text-red-600' : 'text-green-600'}`}>
                           Monthly Expenses
                         </p>
@@ -1106,7 +1228,7 @@ export default function WageCalculator() {
                     </div>
                   )}
 
-                  <div className="bg-gradient-to-r from-indigo-500 to-purple-600 text-white p-4 rounded-lg text-center">
+                  <div className="bg-gradient-to-r from-teal-500 to-purple-600 text-white p-4 rounded-xl text-center">
                     <Clock className="w-8 h-8 mx-auto mb-2" />
                     <p className="text-xs opacity-90">Work Time Needed for New Purchase</p>
                     <p className="text-3xl font-bold">{results.hoursToWork} hours</p>
@@ -1140,14 +1262,14 @@ export default function WageCalculator() {
                     )}
                   </div>
 
-                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200 text-center">
-                    <p className="text-sm font-medium text-blue-800">
+                  <div className="mt-4 p-3 bg-teal-50 rounded-xl border border-teal-200 text-center">
+                    <p className="text-sm font-medium text-teal-800">
                       Is your purchase worth <span className="font-bold">{results.weeksToWork} weeks</span> of your life?
                     </p>
                   </div>
                 </div>
               ) : (
-                <div className="text-center text-gray-500 py-8">
+                <div className="text-center text-slate-500 py-8">
                   <Calculator className="w-12 h-12 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">Enter wage and purchase details</p>
                 </div>
@@ -1156,13 +1278,13 @@ export default function WageCalculator() {
 
             {/* Pie Chart Card */}
             {results && results.pieData && (
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+              <div className="bg-white rounded-2xl ring-1 ring-slate-200/70 shadow-sm p-5 sm:p-6">
+                <h2 className="text-lg font-semibold tracking-tight text-slate-900 mb-5 flex items-center">
                   <PieChart className="w-5 h-5 mr-2 text-purple-600" />
                   Daily Wage Breakdown
                 </h2>
 
-                <div className="h-64 mb-4">
+                <div className="h-64 mb-4 min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsPieChart>
                       <Pie
@@ -1176,10 +1298,10 @@ export default function WageCalculator() {
                         labelLine={false}
                       >
                         {results.pieData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
+                          <Cell key={`cell-${index}`} fill={themedColor(entry.color)} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [`${value.toFixed(2)}`, 'Daily Amount']} />
+                      <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={{ color: tooltipStyle.color }} formatter={(value) => [`${value.toFixed(2)}`, 'Daily Amount']} />
                     </RechartsPieChart>
                   </ResponsiveContainer>
                 </div>
@@ -1190,7 +1312,7 @@ export default function WageCalculator() {
                       <div className="flex items-center">
                         <div 
                           className="w-3 h-3 rounded mr-2 flex-shrink-0" 
-                          style={{ backgroundColor: item.color }}
+                          style={{ backgroundColor: themedColor(item.color) }}
                         ></div>
                         <span className={
                           item.name === 'Taxes' ? 'font-bold' : 
@@ -1202,14 +1324,14 @@ export default function WageCalculator() {
                       </div>
                       <div className="text-right">
                         <div className="font-medium">${item.value.toFixed(2)}</div>
-                        <div className="text-xs text-gray-500">{item.percentage}%</div>
+                        <div className="text-xs text-slate-500">{item.percentage}%</div>
                       </div>
                     </div>
                   ))}
                 </div>
 
                 {results && results.shortfallData && results.shortfallData.hasShortfall && (
-                  <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-200">
+                  <div className="mt-4 p-3 bg-red-50 rounded-xl border border-red-200">
                     <p className="text-sm text-red-800 text-center">
                       <strong>Budget Deficit:</strong> Your daily expenses exceed your net daily income by ${(results.shortfallData.monthlyShortfall / results.shortfallData.workDaysPerMonth).toFixed(2)} per workday
                     </p>
@@ -1220,13 +1342,13 @@ export default function WageCalculator() {
 
             {/* Enhanced Loan Breakdown Pie Chart */}
             {results && results.loanBreakdownData && (
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+              <div className="bg-white rounded-2xl ring-1 ring-slate-200/70 shadow-sm p-5 sm:p-6">
+                <h2 className="text-lg font-semibold tracking-tight text-slate-900 mb-5 flex items-center">
                   <PieChart className="w-5 h-5 mr-2 text-red-600" />
                   Loan Cost Breakdown
                 </h2>
 
-                <div className="h-64 mb-4">
+                <div className="h-64 mb-4 min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsPieChart>
                       <Pie
@@ -1240,10 +1362,10 @@ export default function WageCalculator() {
                         labelLine={false}
                       >
                         {results.loanBreakdownData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
+                          <Cell key={`cell-${index}`} fill={themedColor(entry.color)} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [`${value.toFixed(2)}`, 'Amount']} />
+                      <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={{ color: tooltipStyle.color }} formatter={(value) => [`${value.toFixed(2)}`, 'Amount']} />
                     </RechartsPieChart>
                   </ResponsiveContainer>
                 </div>
@@ -1254,7 +1376,7 @@ export default function WageCalculator() {
                       <div className="flex items-center">
                         <div 
                           className="w-3 h-3 rounded mr-2 flex-shrink-0" 
-                          style={{ backgroundColor: item.color }}
+                          style={{ backgroundColor: themedColor(item.color) }}
                         ></div>
                         <span className={item.name === 'Interest' ? 'font-bold text-red-600' : 'font-medium'}>
                           {item.name}
@@ -1262,20 +1384,20 @@ export default function WageCalculator() {
                       </div>
                       <div className="text-right">
                         <div className="font-medium">${item.value.toFixed(2)}</div>
-                        <div className="text-xs text-gray-500">{item.percentage}%</div>
+                        <div className="text-xs text-slate-500">{item.percentage}%</div>
                       </div>
                     </div>
                   ))}
                 </div>
                 
-                <div className="mt-4 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+                <div className="mt-4 p-3 bg-yellow-50 rounded-xl border border-yellow-200">
                   <p className="text-xs text-yellow-800">
                     <strong>Total Cost:</strong> ${(results.loanBreakdownData.reduce((sum, item) => sum + item.value, 0)).toFixed(2)}
                   </p>
                 </div>
 
                 {results.loanDetails && parseFloat(results.loanDetails.interestSaved) > 0 && (
-                  <div className="mt-3 p-3 bg-green-50 rounded-lg border border-green-200 text-center">
+                  <div className="mt-3 p-3 bg-green-50 rounded-xl border border-green-200 text-center">
                     <p className="text-sm font-medium text-green-800">
                       Your additional principal payments will save you <span className="font-bold">${results.loanDetails.interestSaved}</span> in interest!
                     </p>
@@ -1283,7 +1405,7 @@ export default function WageCalculator() {
                 )}
 
                 {parseFloat(results.interestPaid) > 0 && (
-                  <div className="mt-3 p-3 bg-red-50 rounded-lg border border-red-200 text-center">
+                  <div className="mt-3 p-3 bg-red-50 rounded-xl border border-red-200 text-center">
                     <p className="text-sm font-medium text-red-800">
                       What could you do with an extra <span className="font-bold">${results.interestPaid}</span> if you paid cash for your purchase?
                     </p>
@@ -1297,14 +1419,14 @@ export default function WageCalculator() {
         {/* Annual Time Allocation Chart */}
         {results && results.annualTimeData && (
           <div className="mt-8">
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
-                <Clock className="w-5 h-5 mr-2 text-indigo-600" />
+            <div className="bg-white rounded-2xl ring-1 ring-slate-200/70 shadow-sm p-5 sm:p-6">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900 mb-5 flex items-center">
+                <Clock className="w-5 h-5 mr-2 text-teal-600" />
                 Annual Time Allocation (365 days, or 8,760 Hours)
               </h2>
               
-              <div className="grid lg:grid-cols-2 gap-6">
-                <div className="h-80">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="h-80 min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsPieChart>
                       <Pie
@@ -1333,10 +1455,10 @@ export default function WageCalculator() {
                         labelLine={false}
                       >
                         {results.annualTimeData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
+                          <Cell key={`cell-${index}`} fill={themedColor(entry.color)} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [`${Math.round(value)} hours`, 'Annual Time']} />
+                      <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={{ color: tooltipStyle.color }} formatter={(value) => [`${Math.round(value)} hours`, 'Annual Time']} />
                     </RechartsPieChart>
                   </ResponsiveContainer>
                 </div>
@@ -1347,10 +1469,10 @@ export default function WageCalculator() {
                       <div className="flex items-center">
                         <div 
                           className="w-4 h-4 rounded mr-3 flex-shrink-0" 
-                          style={{ backgroundColor: item.color }}
+                          style={{ backgroundColor: themedColor(item.color) }}
                         ></div>
                         <span className={
-                          item.name === 'Sleep' ? 'font-medium text-gray-700' :
+                          item.name === 'Sleep' ? 'font-medium text-slate-700' :
                           item.name === 'Free Time' ? 'font-bold text-green-700' :
                           item.name === 'Taxes' ? 'font-bold text-black' : 
                           item.name.includes('New Purchase') ? 'font-bold text-red-600' : 'font-medium'
@@ -1360,16 +1482,16 @@ export default function WageCalculator() {
                       </div>
                       <div className="text-right">
                         <div className="font-medium">{Math.round(item.value)} hrs</div>
-                        <div className="text-xs text-gray-500">({(item.value / 24).toFixed(1)} days)</div>
-                        <div className="text-xs text-gray-500">{item.percentage}%</div>
+                        <div className="text-xs text-slate-500">({(item.value / 24).toFixed(1)} days)</div>
+                        <div className="text-xs text-slate-500">{item.percentage}%</div>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
               
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-800 text-center">
+              <div className="mt-6 p-4 bg-teal-50 rounded-xl border border-teal-200">
+                <p className="text-sm text-teal-800 text-center">
                   <strong>Your year breakdown:</strong> How you'll spend your 8,760 hours based on current income and expenses
                 </p>
                 {results.annualTimeData.find(item => item.name === 'Free Time') && (
@@ -1387,14 +1509,14 @@ export default function WageCalculator() {
         {/* Annual Work Time Allocation Chart */}
         {results && results.annualWorkTimeData && (
           <div className="mt-8">
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+            <div className="bg-white rounded-2xl ring-1 ring-slate-200/70 shadow-sm p-5 sm:p-6">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900 mb-5 flex items-center">
                 <Calculator className="w-5 h-5 mr-2 text-orange-600" />
                 Annual Work Time Allocation ({(parseFloat(hoursPerDay) || 8) * (parseFloat(daysPerWeek) || 5) * 52} work hours, or {Math.round(((parseFloat(hoursPerDay) || 8) * (parseFloat(daysPerWeek) || 5) * 52) / (parseFloat(hoursPerDay) || 8))} workdays)
               </h2>
               
-              <div className="grid lg:grid-cols-2 gap-6">
-                <div className="h-80">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="h-80 min-w-0">
                   <ResponsiveContainer width="100%" height="100%">
                     <RechartsPieChart>
                       <Pie
@@ -1408,10 +1530,10 @@ export default function WageCalculator() {
                         labelLine={false}
                       >
                         {results.annualWorkTimeData.map((entry, index) => (
-                          <Cell key={`work-cell-${index}`} fill={entry.color} />
+                          <Cell key={`work-cell-${index}`} fill={themedColor(entry.color)} />
                         ))}
                       </Pie>
-                      <Tooltip formatter={(value) => [`${Math.round(value)} hours`, 'Work Time']} />
+                      <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={{ color: tooltipStyle.color }} formatter={(value) => [`${Math.round(value)} hours`, 'Work Time']} />
                     </RechartsPieChart>
                   </ResponsiveContainer>
                 </div>
@@ -1422,7 +1544,7 @@ export default function WageCalculator() {
                       <div className="flex items-center">
                         <div 
                           className="w-4 h-4 rounded mr-3 flex-shrink-0" 
-                          style={{ backgroundColor: item.color }}
+                          style={{ backgroundColor: themedColor(item.color) }}
                         ></div>
                         <span className={
                           item.name === 'Taxes' ? 'font-bold text-black' : 
@@ -1434,15 +1556,15 @@ export default function WageCalculator() {
                       </div>
                       <div className="text-right">
                         <div className="font-medium">{Math.round(item.value)} hrs</div>
-                        <div className="text-xs text-gray-500">({(item.value / (parseFloat(hoursPerDay) || 8)).toFixed(1)} workdays)</div>
-                        <div className="text-xs text-gray-500">{item.percentage}%</div>
+                        <div className="text-xs text-slate-500">({(item.value / (parseFloat(hoursPerDay) || 8)).toFixed(1)} workdays)</div>
+                        <div className="text-xs text-slate-500">{item.percentage}%</div>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
               
-              <div className="mt-6 p-4 bg-orange-50 rounded-lg border border-orange-200">
+              <div className="mt-6 p-4 bg-orange-50 rounded-xl border border-orange-200">
                 <p className="text-sm text-orange-800 text-center">
                   <strong>Work Time Breakdown:</strong> How your {Math.round(((parseFloat(hoursPerDay) || 8) * (parseFloat(daysPerWeek) || 5) * 52) / (parseFloat(hoursPerDay) || 8))} workdays per year are allocated to different expenses
                 </p>
@@ -1461,8 +1583,8 @@ export default function WageCalculator() {
         {/* Retirement Savings Projections Chart */}
         {results && results.retirementProjections && (
           <div className="mt-8">
-            <div className="bg-white rounded-lg shadow-lg p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+            <div className="bg-white rounded-2xl ring-1 ring-slate-200/70 shadow-sm p-5 sm:p-6">
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900 mb-5 flex items-center">
                 <TrendingUp className="w-5 h-5 mr-2 text-purple-600" />
                 Retirement Savings Projections (7% Annual Return)
               </h2>
@@ -1470,40 +1592,42 @@ export default function WageCalculator() {
               <div className="h-80 mb-4">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={results.retirementProjections} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="year" />
-                    <YAxis tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridStroke} />
+                    <XAxis dataKey="year" tick={{ fill: axisColor }} stroke={gridStroke} />
+                    <YAxis tick={{ fill: axisColor }} stroke={gridStroke} tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`} />
                     <Tooltip 
                       formatter={(value, name) => [
                         `${value.toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
                         name === 'amount' ? 'Total Projected Savings' : name
                       ]}
-                      labelStyle={{ color: '#374151' }}
+                      contentStyle={tooltipStyle}
+                      itemStyle={tooltipItemStyle}
+                      labelStyle={{ color: tooltipStyle.color }}
                     />
                     <Bar dataKey="amount" fill="#8B5CF6" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
 
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-3">
-                  <h3 className="font-medium text-gray-800">Projection Details</h3>
+                  <h3 className="font-medium text-slate-800">Projection Details</h3>
                   {results.retirementProjections.map((projection, index) => (
-                    <div key={index} className="bg-gray-50 p-3 rounded-lg">
+                    <div key={index} className="bg-slate-50 p-3 rounded-xl">
                       <div className="font-medium text-purple-700">{projection.year}</div>
-                      <div className="text-sm text-gray-600 space-y-1">
+                      <div className="text-sm text-slate-600 space-y-1">
                         <div>Current Balance Growth: ${projection.currentBalance.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
                         <div>New Contributions: ${projection.contributions.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
-                        <div className="font-medium text-gray-800">Total: ${projection.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
+                        <div className="font-medium text-slate-800">Total: ${projection.amount.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
                       </div>
                     </div>
                   ))}
                 </div>
 
                 <div className="space-y-4">
-                  <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                    <h3 className="font-medium text-blue-800 mb-2">Current Situation</h3>
-                    <div className="text-sm text-blue-700 space-y-1">
+                  <div className="bg-teal-50 p-4 rounded-xl border border-teal-200">
+                    <h3 className="font-medium text-teal-800 mb-2">Current Situation</h3>
+                    <div className="text-sm text-teal-700 space-y-1">
                       <div>Current Retirement Balance: ${(parseFloat(currentRetirementSavings) || 0).toLocaleString('en-US')}</div>
                       <div>Monthly Surplus Available: ${results.retirementProjections[0].monthlySurplus.toFixed(2)}</div>
                       <div>Annual Savings Potential: ${(results.retirementProjections[0].monthlySurplus * 12).toLocaleString('en-US')}</div>
@@ -1511,7 +1635,7 @@ export default function WageCalculator() {
                   </div>
 
                   {results.retirementProjections[0].monthlySurplus <= 0 && (
-                    <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                    <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-200">
                       <h3 className="font-medium text-yellow-800 mb-2">No Surplus for Savings</h3>
                       <p className="text-sm text-yellow-700">
                         Your current expenses exceed or equal your income. Consider reducing expenses or increasing income to build retirement savings.
@@ -1519,7 +1643,7 @@ export default function WageCalculator() {
                     </div>
                   )}
 
-                  <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                  <div className="bg-green-50 p-4 rounded-xl border border-green-200">
                     <h3 className="font-medium text-green-800 mb-2">Assumptions</h3>
                     <ul className="text-sm text-green-700 space-y-1">
                       <li>• 7% annual return (historical stock market average)</li>
@@ -1534,7 +1658,7 @@ export default function WageCalculator() {
           </div>
         )}
 
-        <div className="mt-8 text-center text-sm text-gray-600">
+        <div className="mt-8 text-center text-sm text-slate-600">
           <p>Visualize how every purchase impacts your daily financial allocation</p>
         </div>
       </div>
